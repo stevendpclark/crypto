@@ -10,6 +10,7 @@ package ocsp // import "golang.org/x/crypto/ocsp"
 import (
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
@@ -151,6 +152,7 @@ var (
 	oidSignatureECDSAWithSHA256 = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 2}
 	oidSignatureECDSAWithSHA384 = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 3}
 	oidSignatureECDSAWithSHA512 = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 4}
+	oidSignatureEd25519         = asn1.ObjectIdentifier{1, 3, 101, 112}
 )
 
 var hashOIDs = map[crypto.Hash]asn1.ObjectIdentifier{
@@ -179,6 +181,7 @@ var signatureAlgorithmDetails = []struct {
 	{x509.ECDSAWithSHA256, oidSignatureECDSAWithSHA256, x509.ECDSA, crypto.SHA256},
 	{x509.ECDSAWithSHA384, oidSignatureECDSAWithSHA384, x509.ECDSA, crypto.SHA384},
 	{x509.ECDSAWithSHA512, oidSignatureECDSAWithSHA512, x509.ECDSA, crypto.SHA512},
+	{x509.PureEd25519, oidSignatureEd25519, x509.Ed25519, crypto.Hash(0) /* no pre-hashing */},
 }
 
 // TODO(rlb): This is also from crypto/x509, so same comment as AGL's below
@@ -211,8 +214,12 @@ func signingParamsForPublicKey(pub interface{}, requestedSigAlgo x509.SignatureA
 			err = errors.New("x509: unknown elliptic curve")
 		}
 
+	case ed25519.PublicKey:
+		pubType = x509.Ed25519
+		sigAlgo.Algorithm = oidSignatureEd25519
+
 	default:
-		err = errors.New("x509: only RSA and ECDSA keys supported")
+		err = errors.New("x509: only RSA, ECDSA and Ed25519 keys supported")
 	}
 
 	if err != nil {
@@ -231,7 +238,7 @@ func signingParamsForPublicKey(pub interface{}, requestedSigAlgo x509.SignatureA
 				return
 			}
 			sigAlgo.Algorithm, hashFunc = details.oid, details.hash
-			if hashFunc == 0 {
+			if hashFunc == 0 && pubType != x509.Ed25519 {
 				err = errors.New("x509: cannot sign with hash function requested")
 				return
 			}
